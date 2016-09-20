@@ -130,8 +130,7 @@ class QMatrix(QWidget):
                 self.status[pbNum] = True
         else:
             color = QColorDialog.getColor()
-            #pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
-            pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: #000000')
+            pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
             self.frames[self.frame].setPixel(pbNum, color)
 
     ### Switch the current operating mode
@@ -188,8 +187,7 @@ class QMatrix(QWidget):
             pb = self.buttons[idx]
             if (self.status[idx]):
                 color = self.frames[self.frame].getPixel(idx)
-                #pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
-                pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: #000000')
+                pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
             else:
                 pb.setStyleSheet('border: 0px; background-color: black; color: black')
 
