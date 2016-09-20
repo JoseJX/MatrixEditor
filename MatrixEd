@@ -8,9 +8,9 @@ import sys
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-from PyQt5.QtWidgets import (QMainWindow, QApplication, QWidget, QGridLayout, QPushButton, QSpinBox, QLabel, QAction, qApp, QSizePolicy, QColorDialog)
+from PyQt5.QtWidgets import (QMainWindow, QApplication, QWidget, QGridLayout, QPushButton, QSpinBox, QLabel, QAction, qApp, QSizePolicy, QColorDialog, QDoubleSpinBox, QInputDialog)
 from PyQt5.QtCore import *
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import (QColor)
 
 class Frame():
     def __init__(self, x, y, status):
@@ -130,8 +130,9 @@ class QMatrix(QWidget):
                 self.status[pbNum] = True
         else:
             color = QColorDialog.getColor()
-            pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
-            self.frames[self.frame].setPixel(pbNum, color)
+            if (color.isValid()):
+                pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
+                self.frames[self.frame].setPixel(pbNum, color)
 
     ### Switch the current operating mode
     def setMode(self):
@@ -156,10 +157,23 @@ class QMatrix(QWidget):
     ### Move to the next frame
     def frameUp(self):
         self.frame = self.frame + 1
-       
-        # Add a frame if needed
+
         if (self.frame >= len(self.frames)):
-            self.frames.append(Frame(self.x, self.y, self.status))
+            self.frame = 0
+        
+        # Update the frame index
+        self.parent().parent().updateFrameIndex(self.frame, len(self.frames))
+
+        # Now update the loaded buttons
+        self.updateMatrix()
+
+    ### Move to the next frame
+    def frameAdd(self):
+        # Add the frame
+        self.frames.append(Frame(self.x, self.y, self.status))
+
+        # Set the frame to the new frame
+        self.frame = len(self.frames) - 1
 
         # Update the frame index
         self.parent().parent().updateFrameIndex(self.frame, len(self.frames))
@@ -203,43 +217,42 @@ class MatrixEd(QMainWindow):
         
         # Build the box first so that we can set signals
         self.matrix = QMatrix()
-        self.mainLayout.addWidget(self.matrix, 1, 0, 1, 8)
+        self.mainLayout.addWidget(self.matrix, 1, 0, 1, 4)
 
-        # X Label and Spinbox
-        self.XLabel = QLabel("X:")
-        self.XLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.mainLayout.addWidget(self.XLabel, 0, 0)
-        self.SetX = QSpinBox()
-        self.SetX.maximum = 256
-        self.SetX.minimum = 1
-        self.SetX.setValue(5)
-        self.SetX.valueChanged.connect(self.matrix.setX)
-        self.mainLayout.addWidget(self.SetX, 0, 1)
+        # Play button and time between frames
+        self.PlayButton = QPushButton("Play")
+        self.PlayButton.clicked.connect(self.playBtn)
+        self.mainLayout.addWidget(self.PlayButton, 0, 0, 1, 2)
+        self.TimerBox = QDoubleSpinBox()
+        self.TimerBox.setValue(1.0)
+        self.TimerBox.setSingleStep(0.01)
+        self.TimerBox.valueChanged.connect(self.updateTimerTickrate)
+        self.mainLayout.addWidget(self.TimerBox, 0, 2)
+        self.TimerBoxLabel = QLabel("Sec/Frame")
+        self.mainLayout.addWidget(self.TimerBoxLabel, 0, 3)
 
-        # Y Label and Spinbox
-        self.YLabel = QLabel("Y:")
-        self.YLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.mainLayout.addWidget(self.YLabel, 0, 3)
-        self.SetY = QSpinBox()
-        self.SetY.maximum = 256
-        self.SetY.minimum = 1
-        self.SetY.setValue(5)
-        self.SetY.valueChanged.connect(self.matrix.setY)
-        self.mainLayout.addWidget(self.SetY, 0, 4)
-        
+        # Build the timer object
+        self.Timer = QTimer()
+        self.Timer.timeout.connect(self.timerTick)
+
         # Frame Left Button
         self.FrameLeft = QPushButton("<")
         self.FrameLeft.clicked.connect(self.matrix.frameDown)
-        self.mainLayout.addWidget(self.FrameLeft, 0, 5)
+        self.mainLayout.addWidget(self.FrameLeft, 2, 0)
 
         # Frame Index
         self.FrameIdx = QLabel("Frame: 1 of 1")
-        self.mainLayout.addWidget(self.FrameIdx, 0, 6)
+        self.mainLayout.addWidget(self.FrameIdx, 2, 1)
 
         # Frame Right Button
         self.FrameRight = QPushButton(">")
         self.FrameRight.clicked.connect(self.matrix.frameUp)
-        self.mainLayout.addWidget(self.FrameRight, 0, 7)
+        self.mainLayout.addWidget(self.FrameRight, 2, 2)
+        
+        # Add Frame
+        self.FrameAdd = QPushButton(">+")
+        self.FrameAdd.clicked.connect(self.matrix.frameAdd)
+        self.mainLayout.addWidget(self.FrameAdd, 2, 3)
 
         ##############
         # Top menu bar
@@ -263,13 +276,21 @@ class MatrixEd(QMainWindow):
         self.fileMenu.addAction(self.loadAction)
         self.fileMenu.addAction(self.exitAction)
 
-        # Mode Menu
+        # Edit Menu
         self.layoutAction = QAction('&Modify LED Layout Mode', self)
         self.layoutAction.setCheckable(True)
         self.layoutAction.triggered.connect(self.matrix.setMode)
+
+        self.XDimAction = QAction('Set the X Dimension', self)
+        self.XDimAction.triggered.connect(self.setXDim)
+
+        self.YDimAction = QAction('Set the Y Dimension', self)
+        self.YDimAction.triggered.connect(self.setYDim)
         
-        self.modeMenu = self.menubar.addMenu('&Mode')
-        self.modeMenu.addAction(self.layoutAction)
+        self.editMenu = self.menubar.addMenu('&Edit')
+        self.editMenu.addAction(self.layoutAction)
+        self.editMenu.addAction(self.XDimAction)
+        self.editMenu.addAction(self.YDimAction)
 
         # Help Menu
         self.helpAction = QAction('&Help', self)
@@ -291,12 +312,65 @@ class MatrixEd(QMainWindow):
 
         # Show the window
         self.show()
+    
+    ############################
+    # Set the X Dimension dialog
+    ############################
+    def setXDim(self):
+        x = -1
+        while(x <= 0):
+            x, ok = QInputDialog.getInt(self, 'Set the X Dimension', 'Enter the X Dimension:', self.matrix.x, 1)
+        if (not (x == self.matrix.x)):
+            self.matrix.setX(x)
+    
+    ############################
+    # Set the Y Dimension dialog
+    ############################
+    def setYDim(self):
+        self.qid = QInputDialog()
+        y = -1
+        while(y <= 0):
+            y, ok = QInputDialog.getInt(self, 'Set the Y Dimension', 'Enter the Y Dimension:', self.matrix.y, 1)
+        if (not (y == self.matrix.y)):
+            self.matrix.setY(y)
 
     ########################
     # Update the frame index
     ########################
     def updateFrameIndex(self, idx, total):
         self.FrameIdx.setText("Frame: " + str(idx + 1) + " of " + str(total))
+    
+    ###############################
+    # Start/stop the playback timer
+    ###############################
+    def playBtn(self):
+        if (self.PlayButton.text() == "Play"):
+            # Start the timer
+            self.Timer.start(self.TimerBox.value() * 1000)
+            
+            # Set the name of the button to pause
+            self.PlayButton.setText("Pause")
+        else:
+            # Stop the timer
+            self.Timer.stop()
+
+            # Update the button text
+            self.PlayButton.setText("Play")
+    
+    #################################
+    # Callback for the playback timer
+    #################################
+    def timerTick(self):
+        # Move to the next frame 
+        self.matrix.frameUp()
+    
+    ##########################################################
+    # Callback for the playback timer's tickrate being changed
+    ##########################################################
+    def updateTimerTickrate(self):
+        # If the timer is running, change it
+        if (self.Timer.isActive):
+            self.Timer.setInterval(self.TimerBox.value() * 1000)
     
     #####################
     # Key Press Handler
