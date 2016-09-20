@@ -1,0 +1,317 @@
+#!/usr/bin/python3
+
+"""
+MatrixEd - An LED Matrix Editor
+"""
+
+import sys
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+from PyQt5.QtWidgets import (QMainWindow, QApplication, QWidget, QGridLayout, QPushButton, QSpinBox, QLabel, QAction, qApp, QSizePolicy, QColorDialog)
+from PyQt5.QtCore import *
+from PyQt5.QtGui import QColor
+
+class Frame():
+    def __init__(self, x, y, status):
+        self.x = x
+        self.y = y
+
+        self.status = status        
+        self.values = []
+
+        # Set the values with a default of white
+        for dx in range(0,self.x):
+            for dy in range(0, self.y):
+                self.values.append(QColor(255, 255, 255, 255))
+    
+    ######################################
+    # Get/Set a value with X/Y coordinates
+    ######################################
+    def setPixel(self, x, y, value):
+        self.values[y * self.x + x] = value
+    def getPixel(self, x, y):
+        return self.values[y * self.x + x]
+
+    #############################
+    # Get/Set a value with offset
+    #############################
+    def setPixel(self, oft, value):
+        self.values[oft] = value
+    def getPixel(self, oft):
+        return self.values[oft]
+
+    ##################################
+    # Save a frame to an output stream
+    ##################################
+    def saveFrame(self, stream, mode):
+        pass
+
+    ######################################
+    # Fills the frame from an input stream
+    ######################################
+    def loadFrame(self, stream, mode):
+        pass
+
+class QMatrix(QWidget):
+    def __init__(self, parent = None):
+        super(QMatrix, self).__init__(parent)
+    
+        self.x = 5
+        self.y = 5
+        self.frame = 0
+        self.mode = "Operate"
+        self.buttons = []
+
+        # Create the new Frame
+        self.frames = []
+
+        # Enabled / disabled switch
+        self.status = []
+
+        # Setting the layout
+        self.grid = QGridLayout()
+        
+        # Create the initial grid
+        self.regen()
+
+        # Set the layout
+        self.setLayout(self.grid)
+
+    ### Set the X Dimension and regenerate the array
+    def setX(self, x):
+        self.x = x
+        self.regen()
+
+    ### Set the Y Dimension and regenerate the array
+    def setY(self, y):
+        self.y = y
+        self.regen()
+
+    ### Regenerate the array with the current parameters
+    def regen(self):
+        # Delete old push buttons
+        for p in self.buttons:
+            p.hide()
+            p.deleteLater()
+        self.buttons = []
+        self.status = []
+
+        # Create new pushbuttons
+        for y in range(0,self.y):
+            for x in range(0,self.x):
+                p = QPushButton(str(y * self.x + x))
+                self.grid.addWidget(p, y, x, 1, 1)
+                p.clicked.connect(lambda: self.push())
+                p.setStyleSheet('border: 0px; background-color: white; color: white')
+                self.buttons.append(p)
+                self.status.append(True)
+                
+                sp = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+                sp.setHorizontalStretch(0)
+                sp.setVerticalStretch(0)
+                sp.setHeightForWidth(p.sizePolicy().hasHeightForWidth())
+                p.setSizePolicy(sp)
+        
+        # Reset the frame
+        self.frames = []
+        self.frames.append(Frame(self.x, self.y, self.status))
+
+    ### Behavior when pressing a matrix button
+    def push(self):
+        pb = self.sender()
+        pbNum = int(pb.text())
+        if (self.mode == "Layout"):
+            if (self.status[pbNum] == True):
+                pb.setStyleSheet('border: 0px; background-color: black; color: black')
+                self.status[pbNum] = False
+            else:
+                pb.setStyleSheet('border: 0px; background-color: white; color: white')
+                self.status[pbNum] = True
+        else:
+            color = QColorDialog.getColor()
+            #pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
+            pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: #000000')
+            self.frames[self.frame].setPixel(pbNum, color)
+
+    ### Switch the current operating mode
+    def setMode(self):
+        if (self.mode == "Layout"):
+            self.mode = "Operate"
+
+            # Disable the buttons that aren't operating
+            for p in self.buttons:
+                pbNum = int(p.text())
+                if (self.status[pbNum] == False):
+                    p.setEnabled(False)
+
+            # Propagate the changes to all of the frames
+            for f in self.frames:
+                f.status = self.status
+        else:
+            self.mode = "Layout"
+            # Enable all of the buttons in layout mode to allow turning things on/off
+            for p in self.buttons:
+                p.setEnabled(True)
+
+    ### Move to the next frame
+    def frameUp(self):
+        self.frame = self.frame + 1
+       
+        # Add a frame if needed
+        if (self.frame >= len(self.frames)):
+            self.frames.append(Frame(self.x, self.y, self.status))
+
+        # Update the frame index
+        self.parent().parent().updateFrameIndex(self.frame, len(self.frames))
+
+        # Now update the loaded buttons
+        self.updateMatrix()
+
+    ### Move to the previous frame
+    def frameDown(self):
+        self.frame = self.frame - 1
+
+        # If we're below 0, loop back to the last frame
+        if (self.frame < 0):
+            self.frame = len(self.frames) - 1
+
+        # Update the frame index
+        self.parent().parent().updateFrameIndex(self.frame, len(self.frames))
+
+        # Now update the loaded buttons
+        self.updateMatrix()
+
+    ### Update the button matrix from the currently loaded frame
+    def updateMatrix(self):
+        for idx in range(0, len(self.buttons)):
+            pb = self.buttons[idx]
+            if (self.status[idx]):
+                color = self.frames[self.frame].getPixel(idx)
+                #pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
+                pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: #000000')
+            else:
+                pb.setStyleSheet('border: 0px; background-color: black; color: black')
+
+class MatrixEd(QMainWindow):
+    def __init__(self):
+        super(QMainWindow, self).__init__()
+        
+        #############
+        # Main Widget
+        #############
+        self.qw = QWidget()
+        self.mainLayout = QGridLayout()
+        
+        # Build the box first so that we can set signals
+        self.matrix = QMatrix()
+        self.mainLayout.addWidget(self.matrix, 1, 0, 1, 8)
+
+        # X Label and Spinbox
+        self.XLabel = QLabel("X:")
+        self.XLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.mainLayout.addWidget(self.XLabel, 0, 0)
+        self.SetX = QSpinBox()
+        self.SetX.maximum = 256
+        self.SetX.minimum = 1
+        self.SetX.setValue(5)
+        self.SetX.valueChanged.connect(self.matrix.setX)
+        self.mainLayout.addWidget(self.SetX, 0, 1)
+
+        # Y Label and Spinbox
+        self.YLabel = QLabel("Y:")
+        self.YLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.mainLayout.addWidget(self.YLabel, 0, 3)
+        self.SetY = QSpinBox()
+        self.SetY.maximum = 256
+        self.SetY.minimum = 1
+        self.SetY.setValue(5)
+        self.SetY.valueChanged.connect(self.matrix.setY)
+        self.mainLayout.addWidget(self.SetY, 0, 4)
+        
+        # Frame Left Button
+        self.FrameLeft = QPushButton("<")
+        self.FrameLeft.clicked.connect(self.matrix.frameDown)
+        self.mainLayout.addWidget(self.FrameLeft, 0, 5)
+
+        # Frame Index
+        self.FrameIdx = QLabel("Frame: 1 of 1")
+        self.mainLayout.addWidget(self.FrameIdx, 0, 6)
+
+        # Frame Right Button
+        self.FrameRight = QPushButton(">")
+        self.FrameRight.clicked.connect(self.matrix.frameUp)
+        self.mainLayout.addWidget(self.FrameRight, 0, 7)
+
+        ##############
+        # Top menu bar
+        ##############
+        self.menubar = self.menuBar()
+
+        # File Menu
+        self.newAction = QAction('&New', self)
+
+        self.saveAction = QAction('&Save', self)
+        
+        self.loadAction = QAction('&Load', self)
+
+        self.exitAction = QAction('&Exit', self)
+        self.exitAction.setShortcut('Ctrl+Q')
+        self.exitAction.triggered.connect(qApp.quit)
+
+        self.fileMenu = self.menubar.addMenu('&File')
+        self.fileMenu.addAction(self.newAction)
+        self.fileMenu.addAction(self.saveAction)
+        self.fileMenu.addAction(self.loadAction)
+        self.fileMenu.addAction(self.exitAction)
+
+        # Mode Menu
+        self.layoutAction = QAction('&Modify LED Layout Mode', self)
+        self.layoutAction.setCheckable(True)
+        self.layoutAction.triggered.connect(self.matrix.setMode)
+        
+        self.modeMenu = self.menubar.addMenu('&Mode')
+        self.modeMenu.addAction(self.layoutAction)
+
+        # Help Menu
+        self.helpAction = QAction('&Help', self)
+        self.aboutAction = QAction('&About', self)
+
+        self.helpMenu = self.menubar.addMenu('&Help')
+
+        self.helpMenu.addAction(self.helpAction)
+        self.helpMenu.addAction(self.aboutAction)
+
+        #####################
+        # Set the main layout
+        #####################
+        self.qw.setLayout(self.mainLayout)
+        self.setCentralWidget(self.qw)
+        
+        # Set the tile
+        self.setWindowTitle('MatrixEd')
+
+        # Show the window
+        self.show()
+
+    ########################
+    # Update the frame index
+    ########################
+    def updateFrameIndex(self, idx, total):
+        self.FrameIdx.setText("Frame: " + str(idx + 1) + " of " + str(total))
+    
+    #####################
+    # Key Press Handler
+    #####################
+    def keyPressEvent(self, e):
+        if (e.key() == Qt.Key_Escape):
+            self.close()
+        if (e.key() == Qt.Key_Greater):
+            self.matrix.frameUp()
+        if (e.key() == Qt.Key_Less):
+            self.matrix.frameDown()
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    prog = MatrixEd()
+    sys.exit(app.exec_())
