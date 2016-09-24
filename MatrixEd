@@ -8,51 +8,114 @@ import sys
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-from PyQt5.QtWidgets import (QMainWindow, QApplication, QWidget, QGridLayout, QPushButton, QSpinBox, QLabel, QAction, qApp, QSizePolicy, QColorDialog, QDoubleSpinBox, QInputDialog)
+from PyQt5.QtWidgets import (QMainWindow, QApplication, QWidget, QGridLayout, QPushButton, QSpinBox, QLabel, QAction, qApp, QSizePolicy, QColorDialog, QDoubleSpinBox, QInputDialog, QFileDialog, QMessageBox)
 from PyQt5.QtCore import *
-from PyQt5.QtGui import (QColor)
+from PyQt5.QtGui import (QColor, QImage, QPainter)
 
-class Frame():
-    def __init__(self, x, y, status):
+### The underlying data store for a Frame is a QImage
+class Frame(QImage):
+    def __init__(self, x, y):
+        super(Frame, self).__init__(x, y, QImage.Format_RGB32)
+         
+        # Fill the QImage with solid white
+        self.fill(QColor(255, 255, 255, 255))
+
+    # Set pixels from index
+    def setPixelIdx(self, idx, value):
+        y = int(idx / super(Frame, self).width())
+        x = (idx - y)
+        if (type(value) is QColor):
+            super(Frame, self).setPixel(x, y, value.rgb())
+        else:
+            super(Frame, self).setPixel(x, y, value)
+
+    # Set pixels directly
+    def setPixel(self, x, y, value):
+        if (type(value) is QColor):
+            super(Frame, self).setPixel(x, y, value.rgb())
+        else:
+            super(Frame, self).setPixel(x, y, value)
+
+    # Get pixels from an index
+    def getPixelIdx(self, idx):
+        y = int(idx / super(Frame, self).width())
+        x = (idx - y * super(Frame, self).width())
+        return QColor(super(Frame, self).pixel(x, y))
+
+    # Get pixels directly
+    def getPixel(self, x, y):
+        return QColor(super(Frame, self).pixel(x, y))
+    
+### The script class for generating frames programatically
+class Script():
+    def __init__(self, x, y):
+        # Size of the area -> scripts should be written for any size
         self.x = x
         self.y = y
 
-        self.status = status        
-        self.values = []
+        # Script to call
+        self.script = self.Edge_scr
 
-        # Set the values with a default of white
-        for dx in range(0,self.x):
-            for dy in range(0, self.y):
-                self.values.append(QColor(255, 255, 255, 255))
-    
-    ######################################
-    # Get/Set a value with X/Y coordinates
-    ######################################
-    def setPixel(self, x, y, value):
-        self.values[y * self.x + x] = value
-    def getPixel(self, x, y):
-        return self.values[y * self.x + x]
+        # Number of frames in the script
+        self.frames = (self.x - 1) * 2 + (self.y - 1) * 2
 
-    #############################
-    # Get/Set a value with offset
-    #############################
-    def setPixel(self, oft, value):
-        self.values[oft] = value
-    def getPixel(self, oft):
-        return self.values[oft]
+        # Is the animation done rendering?
+        self.done = False
 
-    ##################################
-    # Save a frame to an output stream
-    ##################################
-    def saveFrame(self, stream, mode):
-        pass
+    # Report if we're done
+    def isDone(self):
+        return self.done
 
-    ######################################
-    # Fills the frame from an input stream
-    ######################################
-    def loadFrame(self, stream, mode):
-        pass
+    # Start at 0,0 and move around the edge
+    def Edge_scr(self, idx):
+        print("Generating frame: ", str(idx))
+        frame = Frame(self.x, self.y)
+            
+        # Figure out which edge we're on
+        iterationIdx = idx % self.frames;
+        
+        for y in range(0, self.y):
+            for x in range(0, self.x):
+                # Default is black
+                color = QColor(0, 0, 0, 255)
+        
+                # Top edge
+                if (iterationIdx < self.x):
+                    if ((y == 0) and (x == iterationIdx)):
+                        color = QColor(255, 0, 0, 255)
 
+                # Right edge
+                elif (iterationIdx < ((self.x + self.y) - 1)):
+                    if ((x == self.x - 1) and (y == (iterationIdx - self.x))):
+                        color = QColor(255, 0, 0, 255)
+
+                # Bottom edge
+                elif (iterationIdx < ((2 * self.x + self.y) - 2)):
+                    if (y == self.y - 1):
+                        color = QColor(255, 0, 0, 255)
+
+                # Left edge
+                else:
+                    if (x == 0):
+                        color = QColor(255, 0, 0, 255)
+
+                frame.setPixel(x, y, color.rgb())
+        return frame
+       
+    def render(self, idx):
+        # Reset the render status
+        if (idx == 0):
+            self.done = False
+
+        # Using the frame #, render the frame
+        frame = self.script(idx)
+
+        if (idx == self.frames - 1):
+            self.done = True
+        
+        return frame
+
+### The widget for the button matrix
 class QMatrix(QWidget):
     def __init__(self, parent = None):
         super(QMatrix, self).__init__(parent)
@@ -68,6 +131,9 @@ class QMatrix(QWidget):
 
         # Enabled / disabled switch
         self.status = []
+
+        # Script for generating frames
+        self.script = None
 
         # Setting the layout
         self.grid = QGridLayout()
@@ -96,6 +162,7 @@ class QMatrix(QWidget):
             p.deleteLater()
         self.buttons = []
         self.status = []
+        self.script = None
 
         # Create new pushbuttons
         for y in range(0,self.y):
@@ -115,7 +182,7 @@ class QMatrix(QWidget):
         
         # Reset the frame
         self.frames = []
-        self.frames.append(Frame(self.x, self.y, self.status))
+        self.frames.append(Frame(self.x, self.y))
 
     ### Behavior when pressing a matrix button
     def push(self):
@@ -132,7 +199,7 @@ class QMatrix(QWidget):
             color = QColorDialog.getColor()
             if (color.isValid()):
                 pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
-                self.frames[self.frame].setPixel(pbNum, color)
+                self.frames[self.frame].setPixelIdx(pbNum, color)
 
     ### Switch the current operating mode
     def setMode(self):
@@ -144,6 +211,10 @@ class QMatrix(QWidget):
                 pbNum = int(p.text())
                 if (self.status[pbNum] == False):
                     p.setEnabled(False)
+                    p.setVisible(False)
+                else:
+                    p.setEnabled(True)
+                    p.setVisible(True)
 
             # Propagate the changes to all of the frames
             for f in self.frames:
@@ -153,14 +224,23 @@ class QMatrix(QWidget):
             # Enable all of the buttons in layout mode to allow turning things on/off
             for p in self.buttons:
                 p.setEnabled(True)
+                p.setVisible(True)
 
     ### Move to the next frame
     def frameUp(self):
-        self.frame = self.frame + 1
+        # If we're not using a script, it's being handled manually
+        # If we're done rendering the frames, don't re-render
+        if ((self.script == None) or (self.script.isDone())):
+            self.frame = self.frame + 1
 
-        if (self.frame >= len(self.frames)):
-            self.frame = 0
+            if (self.frame >= len(self.frames)):
+                self.frame = 0
         
+        # If we are using a script, generate the frame
+        else:
+            self.frame = self.frame + 1
+            self.frames.append(self.script.render(self.frame))
+
         # Update the frame index
         self.parent().parent().updateFrameIndex(self.frame, len(self.frames))
 
@@ -170,7 +250,7 @@ class QMatrix(QWidget):
     ### Move to the next frame
     def frameAdd(self):
         # Add the frame
-        self.frames.append(Frame(self.x, self.y, self.status))
+        self.frames.append(Frame(self.x, self.y))
 
         # Set the frame to the new frame
         self.frame = len(self.frames) - 1
@@ -200,10 +280,43 @@ class QMatrix(QWidget):
         for idx in range(0, len(self.buttons)):
             pb = self.buttons[idx]
             if (self.status[idx]):
-                color = self.frames[self.frame].getPixel(idx)
+                color = self.frames[self.frame].getPixelIdx(idx)
                 pb.setStyleSheet('border: 0px; background-color: ' + color.name() + '; color: ' + color.name())
             else:
                 pb.setStyleSheet('border: 0px; background-color: black; color: black')
+
+    ### Blit a QImage to the current frame
+    def blit(self, qmg):
+        dest = QPoint(0, 0)
+        qp = QPainter(self.frames[self.frame])
+        qp.drawImage(dest, qmg)
+        qp.end()
+
+        # Update the loaded buttons
+        self.updateMatrix()
+
+    ### Save a frame as an image file
+    def saveFrame(self, fn):
+        if (not self.frames[self.frame].save(fn)):
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setText("Unable to save the frame!")
+            msg.setStandardButtons(QMessageBox.Ok)
+            msg.exec_()
+    
+    ### Set the script
+    def setScript(self, scr):
+        print("scr: ", scr)
+        if (scr == "Edge"):
+            print("Set script to EDGE")
+            self.script = Script(self.x, self.y)
+
+        # Generate frame 0
+        self.frame = 0
+        self.frames = [ self.script.render(0) ]
+
+        # Update the loaded buttons
+        self.updateMatrix()
 
 class MatrixEd(QMainWindow):
     def __init__(self):
@@ -265,6 +378,9 @@ class MatrixEd(QMainWindow):
         self.saveAction = QAction('&Save', self)
         
         self.loadAction = QAction('&Load', self)
+        
+        self.loadScriptAction = QAction('Load Script', self)
+        self.loadScriptAction.triggered.connect(self.pickScript)
 
         self.exitAction = QAction('&Exit', self)
         self.exitAction.setShortcut('Ctrl+Q')
@@ -274,9 +390,10 @@ class MatrixEd(QMainWindow):
         self.fileMenu.addAction(self.newAction)
         self.fileMenu.addAction(self.saveAction)
         self.fileMenu.addAction(self.loadAction)
+        self.fileMenu.addAction(self.loadScriptAction)
         self.fileMenu.addAction(self.exitAction)
 
-        # Edit Menu
+        # Layout Menu
         self.layoutAction = QAction('&Modify LED Layout Mode', self)
         self.layoutAction.setCheckable(True)
         self.layoutAction.triggered.connect(self.matrix.setMode)
@@ -287,10 +404,23 @@ class MatrixEd(QMainWindow):
         self.YDimAction = QAction('Set the Y Dimension', self)
         self.YDimAction.triggered.connect(self.setYDim)
         
-        self.editMenu = self.menubar.addMenu('&Edit')
-        self.editMenu.addAction(self.layoutAction)
-        self.editMenu.addAction(self.XDimAction)
-        self.editMenu.addAction(self.YDimAction)
+        self.layoutMenu = self.menubar.addMenu('&Layout')
+
+        self.layoutMenu.addAction(self.layoutAction)
+        self.layoutMenu.addAction(self.XDimAction)
+        self.layoutMenu.addAction(self.YDimAction)
+
+
+        # Content Menu
+        self.importAction = QAction('Import Image as Current Frame', self)
+        self.importAction.triggered.connect(self.ImportFrame)
+
+        self.exportAction = QAction('Export Current Frame as Image', self)
+        self.exportAction.triggered.connect(self.ExportFrame)
+
+        self.contentMenu = self.menubar.addMenu('&Content')
+        self.contentMenu.addAction(self.importAction)
+        self.contentMenu.addAction(self.exportAction)
 
         # Help Menu
         self.helpAction = QAction('&Help', self)
@@ -371,6 +501,33 @@ class MatrixEd(QMainWindow):
         # If the timer is running, change it
         if (self.Timer.isActive):
             self.Timer.setInterval(self.TimerBox.value() * 1000)
+
+    ##########################################################
+    # Dialog for importing a frame
+    ##########################################################
+    def ImportFrame(self):
+        fn, fm = QFileDialog.getOpenFileName(self, 'Open frame...', None, "Images (*.bmp *.gif *.jpg *.jpeg *.png);;All Files (*)")  
+        if (fn != None):
+            print (fn)
+            img = QImage(fn)
+            if (img != None):
+                self.matrix.blit(img)
+
+    ##########################################################
+    # Dialog for exporting a frame
+    ##########################################################
+    def ExportFrame(self):
+        fn, fm = QFileDialog.getSaveFileName(self, 'Save as...', None, "Images (*.bmp *.jpg *.jpeg *.png);;All Files (*)")
+        if (fn != None):
+            self.matrix.saveFrame(fn)
+    
+    ##########################################################
+    # Dialog for picking a script
+    ##########################################################
+    def pickScript(self):
+        script, ok = QInputDialog.getItem(self, 'Pick a script to generate the frames', 'Script:', ['Edge', 'Cylon'])
+        if (ok):
+            self.matrix.setScript(script)
     
     #####################
     # Key Press Handler
