@@ -8,9 +8,9 @@ import sys
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-from PyQt5.QtWidgets import (QMainWindow, QApplication, QWidget, QGridLayout, QPushButton, QSpinBox, QLabel, QAction, qApp, QSizePolicy, QColorDialog, QDoubleSpinBox, QInputDialog, QFileDialog, QMessageBox)
+from PyQt5.QtWidgets import (QMainWindow, QApplication, QWidget, QGridLayout, QPushButton, QSpinBox, QLabel, QAction, qApp, QSizePolicy, QColorDialog, QDoubleSpinBox, QInputDialog, QFileDialog, QMessageBox, QToolButton)
 from PyQt5.QtCore import *
-from PyQt5.QtGui import (QColor, QImage, QPainter)
+from PyQt5.QtGui import (QColor, QImage, QPainter, QFont)
 
 ### The underlying data store for a Frame is a QImage
 class Frame(QImage):
@@ -23,7 +23,7 @@ class Frame(QImage):
     # Set pixels from index
     def setPixelIdx(self, idx, value):
         y = int(idx / super(Frame, self).width())
-        x = (idx - y)
+        x = (idx - y * super(Frame, self).width())
         if (type(value) is QColor):
             super(Frame, self).setPixel(x, y, value.rgb())
         else:
@@ -167,17 +167,21 @@ class QMatrix(QWidget):
         # Create new pushbuttons
         for y in range(0,self.y):
             for x in range(0,self.x):
-                p = QPushButton(str(y * self.x + x))
+                p = QToolButton()
+                p.setObjectName(str(y * self.x + x))
                 self.grid.addWidget(p, y, x, 1, 1)
                 p.clicked.connect(lambda: self.push())
                 p.setStyleSheet('border: 0px; background-color: white; color: white')
                 self.buttons.append(p)
                 self.status.append(True)
+                p.setMinimumWidth(25)
+                p.setMinimumHeight(25)
                 
-                sp = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
-                sp.setHorizontalStretch(0)
-                sp.setVerticalStretch(0)
-                sp.setHeightForWidth(p.sizePolicy().hasHeightForWidth())
+                # Set the size policy
+                sp = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+                sp.setHorizontalStretch(True)
+                sp.setVerticalStretch(True)
+                sp.setHeightForWidth(True)
                 p.setSizePolicy(sp)
         
         # Reset the frame
@@ -187,7 +191,7 @@ class QMatrix(QWidget):
     ### Behavior when pressing a matrix button
     def push(self):
         pb = self.sender()
-        pbNum = int(pb.text())
+        pbNum = int(pb.objectName())
         if (self.mode == "Layout"):
             if (self.status[pbNum] == True):
                 pb.setStyleSheet('border: 0px; background-color: black; color: black')
@@ -208,7 +212,7 @@ class QMatrix(QWidget):
 
             # Disable the buttons that aren't operating
             for p in self.buttons:
-                pbNum = int(p.text())
+                pbNum = int(p.objectName())
                 if (self.status[pbNum] == False):
                     p.setEnabled(False)
                     p.setVisible(False)
@@ -354,7 +358,10 @@ class MatrixEd(QMainWindow):
         self.mainLayout.addWidget(self.FrameLeft, 2, 0)
 
         # Frame Index
-        self.FrameIdx = QLabel("Frame: 1 of 1")
+        self.FrameIdx = QLabel("Frame: 0001 of 0001")
+        self.monoFont = QFont("Monospace")
+        self.monoFont.setStyleHint(QFont.TypeWriter)
+        self.FrameIdx.setFont(self.monoFont)
         self.mainLayout.addWidget(self.FrameIdx, 2, 1)
 
         # Frame Right Button
@@ -468,7 +475,7 @@ class MatrixEd(QMainWindow):
     # Update the frame index
     ########################
     def updateFrameIndex(self, idx, total):
-        self.FrameIdx.setText("Frame: " + str(idx + 1) + " of " + str(total))
+        self.FrameIdx.setText("Frame: " + str(idx + 1).zfill(4) + " of " + str(total).zfill(4))
     
     ###############################
     # Start/stop the playback timer
