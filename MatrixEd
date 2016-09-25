@@ -78,7 +78,7 @@ class Script():
     def isDone(self):
         return self.done
 
-    def render(self, idx):
+    def render(self, status, idx):
         # Reset the render status
         if (idx == 0):
             self.done = False
@@ -87,7 +87,7 @@ class Script():
         frame = Frame(self.x, self.y)
 
         # Using the frame #, render the frame
-        self.script(frame, idx)
+        self.script(frame, status, idx)
 
         if ((not (self.frames == 0)) and (idx == self.frames - 1)):
             self.done = True
@@ -110,6 +110,7 @@ class QMatrix(QWidget):
 
         # Enabled / disabled switch
         self.status = []
+        self.modified = False
 
         # Script for generating frames
         self.script = None
@@ -132,6 +133,11 @@ class QMatrix(QWidget):
     def setY(self, y):
         self.y = y
         self.regen()
+
+    ### Delete all frames
+    def deleteAllFrames(self):
+        self.frames = []
+        self.frames.append(Frame(self.x, self.y))
 
     ### Regenerate the array with the current parameters
     def regen(self):
@@ -162,16 +168,15 @@ class QMatrix(QWidget):
                 sp.setVerticalStretch(True)
                 sp.setHeightForWidth(True)
                 p.setSizePolicy(sp)
-        
-        # Reset the frame
-        self.frames = []
-        self.frames.append(Frame(self.x, self.y))
+
+        self.deleteAllFrames()
 
     ### Behavior when pressing a matrix button
     def push(self):
         pb = self.sender()
         pbNum = int(pb.objectName())
         if (self.mode == "Layout"):
+            self.Modified = True
             if (self.status[pbNum] == True):
                 pb.setStyleSheet('border: 0px; background-color: black; color: black')
                 self.status[pbNum] = False
@@ -199,13 +204,21 @@ class QMatrix(QWidget):
                     p.setEnabled(True)
                     p.setVisible(True)
 
-            # Propagate the changes to all of the frames
-            for f in self.frames:
-                f.status = self.status
+            # Update the buttons with the new colors
+            self.updateMatrix()
+
         else:
             self.mode = "Layout"
+            # We haven't modified anything yet...
+            self.Modified = False
             # Enable all of the buttons in layout mode to allow turning things on/off
             for p in self.buttons:
+                # Set the current color status
+                if (p.isVisible()):
+                    p.setStyleSheet('border: 0px; background-color: white; color: white')
+                else:
+                    p.setStyleSheet('border: 0px; background-color: black; color: black')
+
                 p.setEnabled(True)
                 p.setVisible(True)
 
@@ -222,7 +235,7 @@ class QMatrix(QWidget):
         # If we are using a script, generate the frame
         else:
             self.frame = self.frame + 1
-            self.frames.append(self.script.render(self.frame))
+            self.frames.append(self.script.render(self.status, self.frame))
 
         # Update the frame index
         self.parent().parent().updateFrameIndex(self.frame, len(self.frames))
@@ -294,7 +307,7 @@ class QMatrix(QWidget):
 
         # Generate frame 0
         self.frame = 0
-        self.frames = [ self.script.render(0) ]
+        self.frames = [ self.script.render(self.status, 0) ]
 
         # Update the loaded buttons
         self.updateMatrix()
@@ -402,9 +415,13 @@ class MatrixEd(QMainWindow):
         self.exportAction = QAction('Export Current Frame as Image', self)
         self.exportAction.triggered.connect(self.ExportFrame)
 
+        self.deleteAction = QAction('Delete All Frames', self)
+        self.deleteAction.triggered.connect(self.matrix.deleteAllFrames)
+
         self.contentMenu = self.menubar.addMenu('&Content')
         self.contentMenu.addAction(self.importAction)
         self.contentMenu.addAction(self.exportAction)
+        self.contentMenu.addAction(self.deleteAction)
 
         # Help Menu
         self.helpAction = QAction('&Help', self)

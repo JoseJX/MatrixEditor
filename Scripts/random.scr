@@ -5,10 +5,16 @@ def frameCount(x, y):
     # We return 0 because the frames run forever
     return 0
 
-def script(frame, idx):
-    # Pick a random pixel
-    x = randint(0, frame.width() - 1)
-    y = randint(0, frame.height() - 1)
+def script(frame, status, idx):
+    x = -1
+    y = -1
+    done = False
+    # Pick a random, valid pixel
+    while (not done):
+        x = randint(0, frame.width() - 1)
+        y = randint(0, frame.height() - 1)
+        if (status[y * frame.width() + x]):
+            done = True
 
     # Pick a random color using HSV -> we only vary the hue
     h = randint(0, 255)
