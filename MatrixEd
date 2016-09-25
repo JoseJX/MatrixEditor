@@ -5,6 +5,7 @@ MatrixEd - An LED Matrix Editor
 """
 
 import sys
+from random import (randint)
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
@@ -48,16 +49,27 @@ class Frame(QImage):
     
 ### The script class for generating frames programatically
 class Script():
-    def __init__(self, x, y):
+    def __init__(self, fn, x, y):
         # Size of the area -> scripts should be written for any size
         self.x = x
         self.y = y
 
-        # Script to call
-        self.script = self.Edge_scr
+        # Awful idea, but it does work...
+        l_vars = dict()
+        with open(fn) as f:
+            ### Append some boilerplate code (?)
+            scr = "from PyQt5.QtGui import (QColor)\n"
+            scr = scr + "from random import (randint)\n"
+
+            scr = scr + f.read()
+            code = compile(scr, fn, 'exec')
+            exec(code, globals(), l_vars)
+
+        # Imported Script functions to call
+        self.script = l_vars['script']
 
         # Number of frames in the script
-        self.frames = (self.x - 1) * 2 + (self.y - 1) * 2
+        self.frames = l_vars['frameCount'](x, y)
 
         # Is the animation done rendering?
         self.done = False
@@ -66,51 +78,18 @@ class Script():
     def isDone(self):
         return self.done
 
-    # Start at 0,0 and move around the edge
-    def Edge_scr(self, idx):
-        print("Generating frame: ", str(idx))
-        frame = Frame(self.x, self.y)
-            
-        # Figure out which edge we're on
-        iterationIdx = idx % self.frames;
-        
-        for y in range(0, self.y):
-            for x in range(0, self.x):
-                # Default is black
-                color = QColor(0, 0, 0, 255)
-        
-                # Top edge
-                if (iterationIdx < self.x):
-                    if ((y == 0) and (x == iterationIdx)):
-                        color = QColor(255, 0, 0, 255)
-
-                # Right edge
-                elif (iterationIdx < ((self.x + self.y) - 1)):
-                    if ((x == self.x - 1) and (y == (iterationIdx - self.x))):
-                        color = QColor(255, 0, 0, 255)
-
-                # Bottom edge
-                elif (iterationIdx < ((2 * self.x + self.y) - 2)):
-                    if (y == self.y - 1):
-                        color = QColor(255, 0, 0, 255)
-
-                # Left edge
-                else:
-                    if (x == 0):
-                        color = QColor(255, 0, 0, 255)
-
-                frame.setPixel(x, y, color.rgb())
-        return frame
-       
     def render(self, idx):
         # Reset the render status
         if (idx == 0):
             self.done = False
 
-        # Using the frame #, render the frame
-        frame = self.script(idx)
+        print("Generating frame: ", str(idx))
+        frame = Frame(self.x, self.y)
 
-        if (idx == self.frames - 1):
+        # Using the frame #, render the frame
+        self.script(frame, idx)
+
+        if ((not (self.frames == 0)) and (idx == self.frames - 1)):
             self.done = True
         
         return frame
@@ -311,9 +290,7 @@ class QMatrix(QWidget):
     ### Set the script
     def setScript(self, scr):
         print("scr: ", scr)
-        if (scr == "Edge"):
-            print("Set script to EDGE")
-            self.script = Script(self.x, self.y)
+        self.script = Script(scr, self.x, self.y)
 
         # Generate frame 0
         self.frame = 0
@@ -532,9 +509,9 @@ class MatrixEd(QMainWindow):
     # Dialog for picking a script
     ##########################################################
     def pickScript(self):
-        script, ok = QInputDialog.getItem(self, 'Pick a script to generate the frames', 'Script:', ['Edge', 'Cylon'])
-        if (ok):
-            self.matrix.setScript(script)
+        fn, fm = QFileDialog.getOpenFileName(self, 'Load Script...', 'Scripts', "Scripts (*.scr);;All Files (*)")
+        if (fn != None):
+           self.matrix.setScript(fn)
     
     #####################
     # Key Press Handler
