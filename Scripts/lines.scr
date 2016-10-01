@@ -1,0 +1,55 @@
+#!/usr/bin/python3
+# Line of varying color that moves across and back (cylon)
+
+savedColor=QColor(255, 255, 255, 255)
+
+def frameCount(x, y): 
+    return 2*x
+
+def script(frame, status, idx):
+    global savedColor
+
+    if (idx == 0):
+        # Pick a random color using HSV -> we only vary the hue
+        h = randint(0, 255)
+        s = 255
+        v = 255
+
+        # Convert to RGB
+        # Based on http://web.mit.edu/stroborg/Public/hsvtorgb.c
+
+        # Get the hue value between 0-5
+        region = int(h / 43);
+
+        # Get the remainder
+        remainder = int((h - (region * 43)) * 6)
+
+        # Temp values for assignment (OPTIMIZE)
+        p = (v * (255 - s)) >> 8
+        q = (v * (255 - ((s * remainder) >> 8))) >> 8
+        t = (v * (255 - ((s * (255 - remainder)) >> 8))) >> 8
+
+        # Assign RGB based on region
+        if (region == 0):
+            savedColor = QColor(v,t,p)
+        elif (region == 1):
+            savedColor = QColor(q,v,p)
+        elif (region == 2):
+            savedColor = QColor(p, v, t)
+        elif (region == 3):
+            savedColor = QColor(p, q, v)
+        elif (region == 4):
+            savedColor = QColor(t, p, v)
+        else:
+            savedColor = QColor(v, p, q)
+
+    frame.fill(QColor(0, 0, 0, 255))
+
+    # Fill the column
+    for y in range(0, frame.height()):
+        x = idx % frame.width()
+        if (idx >= frame.width()):
+            x = (frame.width() - 1) - x
+
+        if (status[y * frame.width() + x]):
+            frame.setPixel(x, y, savedColor)
